@@ -1,12 +1,26 @@
+import sys
 import os
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 import pygame
 import neat
+import time
 import random
+import pickle
 from pygame_widgets import Slider
 pygame.font.init()
+pygame.mixer.pre_init(buffer=512)
+pygame.mixer.init()
 
-WIN_WIDTH = 800
-WIN_HEIGHT = 600
+WIN_WIDTH = int(600 * 2.5)
+WIN_HEIGHT = int(150 * 5)
 GROUND_Y = WIN_HEIGHT * 0.85
 GROUND_LEVEL = GROUND_Y + 25
 DINO_X = WIN_WIDTH / 15
@@ -23,27 +37,31 @@ gen = 0
 speed = 1
 
 DINO_IMGS = [
-    pygame.image.load("dino walking 1.png"),
-    pygame.image.load("dino walking 2.png"), 
-    pygame.image.load("dino jumping.png"),
-    pygame.image.load("dino ducking 1.png"),
-    pygame.image.load("dino ducking 2.png"),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/dino walking 1.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/dino walking 2.png")), 
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/dino jumping.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/dino ducking 1.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/dino ducking 2.png")),
 ]
 
 OBSTACLE_IMGS = [
-    pygame.image.load("small1.png"),
-    pygame.image.load("small3.png"),
-    pygame.image.load("large1.png"),
-    pygame.image.load("large4.png"),
-    pygame.image.load("bird1.png"),
-    pygame.image.load("bird2.png"),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/small1.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/small3.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/large1.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/large4.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/bird1.png")),
+    pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/bird2.png")),
 ]
 
-GROUND_IMG = pygame.image.load("ground.png")
+GROUND_IMG = pygame.image.load(resource_path("Dino Game NEAT AI/Sprites/ground.png"))
 
-STAT_FONT = pygame.font.Font("PressStart2P-Regular.ttf", 15)
+JUMP_SOUND = pygame.mixer.Sound(resource_path("Dino Game NEAT AI/Audio/jump.mp3"))
+SCOREUP_SOUND = pygame.mixer.Sound(resource_path("Dino Game NEAT AI/Audio/jump.mp3"))
+SCOREUP_SOUND.set_volume(0.2)
+DEATH_SOUND = pygame.mixer.Sound(resource_path("Dino Game NEAT AI/Audio/jump.mp3"))
 
-win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+STAT_FONT = pygame.font.Font(resource_path("Dino Game NEAT AI/Other/PressStart2P-Regular.ttf"), 25)
+
 
 class Dino:
     IMGS = DINO_IMGS
@@ -71,11 +89,13 @@ class Dino:
 
     def small_jump(self):
         if self.state == "running":
+            pygame.mixer.Sound.play(JUMP_SOUND)
             self.vel = self.SMALL_JUMP_FORCE
             self.state = "jumping"
     
     def big_jump(self):
         if self.state == "running":
+            pygame.mixer.Sound.play(JUMP_SOUND)
             self.vel = self.BIG_JUMP_FORCE
             self.state = "jumping"
 
@@ -133,7 +153,7 @@ class Dino:
 
         self.img = self.IMGS[self.img_index]
 
-        win.blit(self.img, (round(self.x), round(self.y)))
+        win.blit(self.img, (self.x, self.y))
 
     def get_mask(self):
         return pygame.mask.from_surface(self.img)
@@ -182,7 +202,7 @@ class Obstacle:
 
                 self.animation_counter = 0
         
-        win.blit(self.img, (round(self.x), round(self.top)))
+        win.blit(self.img, (self.x, self.top))
 
     def collide(self, dino):
         dino_mask = dino.get_mask()
@@ -218,9 +238,9 @@ class Ground:
             self.x2 = self.x1 + self.WIDTH
 
     def draw(self, win):
-        win.blit(self.IMG, (round(self.x1), round(self.y)))
-        win.blit(self.IMG, (round(self.x2), round(self.y)))
-        
+        win.blit(self.IMG, (self.x1, self.y))
+        win.blit(self.IMG, (self.x2, self.y))
+
 
 def draw_window(win, ground, dinos, obstacles, score, highscore, gen, slider, speed, bird_slider, bird_spawn_chance):
     win.fill([247, 247, 247])
@@ -254,31 +274,32 @@ def draw_window(win, ground, dinos, obstacles, score, highscore, gen, slider, sp
 
     pygame.display.update()
 
+win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 slider = Slider(
     win, 
-    110, 
+    170, 
     10, 
-    110, 
-    15, 
+    200, 
+    25, 
     min=1, 
     max=10, 
     step=1, 
     initial=1, 
-    handleRadius=7, 
+    handleRadius=12, 
     curved=False, 
     handleColour=(83, 83, 83)
 )
 bird_slider = Slider(
     win, 
-    290, 
-    35, 
-    110, 
-    15, 
+    470, 
+    45, 
+    200, 
+    25, 
     min=0, 
     max=100, 
     step=1, 
     initial=0, 
-    handleRadius=7, 
+    handleRadius=12, 
     curved=False, 
     handleColour=(83, 83, 83)
 )
@@ -390,6 +411,7 @@ def main(genomes, config):
             for obstacle in obstacles:
                 for x, dino in enumerate(dinos):
                     if obstacle.collide(dino):
+                        pygame.mixer.Sound.play(DEATH_SOUND)
                         ge[x].fitness -= 1
                         dinos.pop(x)
                         nets.pop(x)
@@ -411,6 +433,7 @@ def main(genomes, config):
                 score_counter = 0
                 if score % 100 == 0 and score >= 100:
                     vel += 1
+                    pygame.mixer.Sound.play(SCOREUP_SOUND)
                     flash_counter = 0
                     flash_num = 6
                     score_colour = (247, 247, 247)
@@ -450,9 +473,9 @@ def run(config_path):
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
 
-    p.run(main, float("inf"))
+    winner = p.run(main, float("inf"))
 
 if __name__ == "__main__":
     local_dir = os.path.dirname(__file__)
-    config_path = "config-feedforward.txt"
+    config_path = resource_path("Dino Game NEAT AI/Other/config-feedforward.txt")
     run(config_path)
