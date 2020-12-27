@@ -16,6 +16,7 @@ BIRD_SPAWN_CHANCE = 0
 SCORE_RATE = 5
 FLASH_SPEED = 10
 
+
 vel = 10
 highscore = 0
 score_colour = (83, 83, 83)
